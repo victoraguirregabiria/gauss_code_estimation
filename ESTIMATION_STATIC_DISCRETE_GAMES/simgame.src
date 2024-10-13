@@ -1,0 +1,122 @@
+/*
+**  SIMGAME.SRC    Procedure that simulates observations  
+**                 from a model of entry
+**
+**  by Victor Aguirregabiria
+**  First version: February, 2003
+**  This version:  October, 2004
+**
+**  ---------------------------------------------------------------------
+**                              MODEL
+**  ---------------------------------------------------------------------
+**  i = Firm index; t = Market index
+**      a[it] = Indicator of entry of firm i in market t
+**      x[it] = (kx x 1) vector of firm i's characteristics
+**              which have variability over markets.
+**      z[t]  = (kz x 1) vector of market characteristics.
+**      e[it] = Firm i's private information in market t.
+**
+**  Profits:
+**  --------
+**  No entry:   Uit(0) = 0
+**
+**  Entry:      Uit(1) = alphai + beta'*x[it] + gama'*z[t]
+**                     - delta*ln(N[-it]) + 1) + e[it]
+**  where:
+**      alphai = Firm i's fixed effect
+**      N[-it] = Number of firms, other than i, 
+**               operating in market t. 
+**      beta, gama and delta are parameters
+**
+**  ----------------------------------------------------------------------------
+**
+**  FORMAT:
+**  {asim,xsim,zsim,psim} = 
+**              simgame(theta,xval,pdfx,zval,pdfz,nplayer,numt)
+**
+**  Inputs:
+**
+**      theta   = ( alpha[1] | alpha[2] | ... | alpha[n]
+**                | beta | gama | delta )
+**
+**      xval    - (numx x kx) matrix with the support of the
+**                distribution of firm-specific exogenous vars.
+**
+**      pdfx    - (numx x kx) matrix with the probability 
+**                distributions of firm-specific exogenous vars.
+**
+**      zval    - (numz x kz) matrix with the support of the
+**                distribution of market characteristics.
+**
+**      pdfz    - (numz x kz) matrix with the probability 
+**                distributions of market characteristics.
+**
+**      nplayer - Number of firms (potential entrants)
+**
+**      numt    - Number of markets
+**
+**  Outputs:
+**
+**      asim   - (numt x nplayer) matrix with simulations
+**               of players' decisions
+**
+**      xsim   - (numt x kx*nplayer) matrix with simulations
+**               of firm-specific exogenous vars.
+**               Columns are sorted first by variable and then by firm
+**
+**      zsim   - (numt x kz) matrix with simulations
+**               of market characteristics.
+**
+**      psim   - (numt x nplayer) matrix with equilibrium
+**               entry probabilities
+**
+*/
+
+proc (4) = simgame(theta,xval,pdfx,zval,pdfz,nplayer,numt) ;
+  local numx, numz, kx, kz, cdfx, cdfx_1, cdfz, cdfz_1,
+        alpha0, beta0, gama0, delta0, xsim, zsim, asim, psim,
+        t, p0, j, u, xbuff, alpi, pbuff, dconver ;
+  numx = rows(xval) ;  
+  kx = cols(xval) ;  
+  numz = rows(zval) ;  
+  kz = cols(zval) ;  
+  cdfx = cumsumc(pdfx) ;
+  cdfx_1 = zeros(1,kx) | cdfx[1:numx-1,.] ;
+  cdfz = cumsumc(pdfz) ;
+  cdfz_1 = zeros(1,kz) | cdfz[1:numz-1,.] ;
+  alpha0 = theta[1:nplayer] ;
+  beta0 = theta[nplayer+1:nplayer+kx] ;
+  gama0 = theta[nplayer+kx+1:nplayer+kx+kz] ;
+  delta0 = theta[nplayer+kx+kz+1] ;
+
+  xsim = zeros(numt,kx*nplayer) ;
+  zsim = zeros(numt,kz) ;
+  psim = zeros(numt,nplayer) ;
+  asim = zeros(numt,nplayer) ;
+  p0 = 0.5*ones(nplayer,1) ;
+  t=1 ;
+  do while t<=numt ;
+    @ 1. Simulation of x's @
+    j=1 ;
+    do while j<=kx ;
+      u = rndu(nplayer,1) ;
+      u = (u.>(cdfx_1[.,j]')).*(u.<=(cdfx[.,j]')) ; 
+      xsim[t,(j-1)*nplayer+1:j*nplayer] = (u * xval[.,j])' ;  
+      j=j+1 ;
+    endo ;
+   
+    @ 2. Simulation of z's @
+    u = rndu(1,kz) ;
+    u = (u.>cdfz_1).*(u.<=cdfz) ;
+    zsim[t,.] = sumc(u.*zval)' ;
+
+    @ 3. Simulation of a's @
+    xbuff = reshape(xsim[t,.],kx,nplayer)' ;    
+    alpi = alpha0 + xbuff*beta0 + zsim[t,.]*gama0 ;
+    {pbuff,dconver} = equiprob(alpi,delta0,p0) ;
+    psim[t,.] = pbuff' ;
+    asim[t,.] = rndu(1,nplayer).<psim[t,.] ;
+    t=t+dconver ;
+  endo ;                           
+  retp(asim,xsim,zsim,psim) ;
+endp ;

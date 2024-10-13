@@ -1,0 +1,82 @@
+/*
+**  EQUIPROB.SRC    Procedure that computes equilibrium  probabilities
+**                  of a static game of market exit with incomplete 
+**                  information.
+**                  Gauss-Seidel iterations
+**
+**  by Victor Aguirregabiria
+**  First version: August, 2003
+**  This  version: October, 2004
+**
+**  ---------------------------------------------------------------------
+**                              MODEL
+**  ---------------------------------------------------------------------
+**  i = Firm index
+**      a[i] = Indicator of the event 'firm i operates in the market
+**      e[i] = Firm i's private information.
+**
+**  Profits:
+**  --------
+**  No operative: U(0) = 0
+**
+**  Operative:    U(1) = alphai - delta * log(N[-i]) + 1) + e1[i]
+**  where:
+**      alphai = Firm i's fixed effect
+**      N[-i] = Number of firms, other than i, operating in the market
+**      delta is a are parameter
+**
+**  ----------------------------------------------------------------------------
+**
+**  FORMAT:
+**  { prob, dconv } = equiprob(alpha,delta,prob0)
+**
+**  Inputs:
+**      alpha   - (nplayer x 1) vector with players' fixed effects
+**      delta   - Parameter of strategic interactions.
+**      prob0   - Initial guess for vector of probabilities
+**
+**  Outputs:
+**      prob    - (nstate x nplayer) vector with equilibrium  
+**                probabilities of entry
+**      dconv   - Indicator for convergence: 
+**                  dconv = 1 ===> convergence
+**                  dconv = 0 ===> no convergence
+**
+*/
+
+proc (2) = equiprob(alpha,delta,prob0) ;
+  local nplay, critconv, criter, iter, i, hi, prob1, dconv ;
+  nplay = rows(prob0) ;
+  critconv = 1e-6 ;
+  criter = 1000 ;
+  dconv = 1 ;
+  iter=1 ;
+  do while (criter>critconv)AND(iter<=5000) ;
+/*
+  "Iteration =" ;; iter ;; "Criterion =" ;; criter ;
+*/
+    prob1 = prob0 ;
+    i=1 ;
+    do while i<=nplay ;
+      if (i==1) ;
+        hi = prob1[2:nplay] ;
+      elseif (i>1).AND(i<nplay) ;
+        hi = prob1[1:i-1] | prob1[i+1:nplay] ;
+      elseif (i==nplay) ;
+        hi = prob1[1:nplay-1] ;
+      endif ;
+      hi = psumbern(hi) ;
+      hi = hi'*ln(seqa(1,1,nplay)) ;
+      hi = alpha[i] - delta * hi ;
+      prob1[i] = 1/(1+exp(-hi)) ;
+      i=i+1 ;
+    endo ;
+    criter = maxc(abs(prob1-prob0)) ;
+    prob0 = prob1 ;
+    iter = iter + 1 ;
+  endo ;
+  if (criter>critconv) ;
+    dconv = 0 ;
+  endif ;
+  retp(prob1,dconv) ;
+endp ;

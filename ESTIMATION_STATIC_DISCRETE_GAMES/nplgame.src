@@ -1,0 +1,147 @@
+/*
+**  NPLGAME.SRC    Procedure that estimates the structural parameters 
+**                 of an entry model of incomplete information
+**                 using a Nested Pseudo-Likelihood (NPL) algorithm
+**
+**  by Victor Aguirregabiria
+**  Last revision: February, 2003
+**
+**  ---------------------------------------------------------------------
+**                              MODEL
+**  ---------------------------------------------------------------------
+**  i = Firm index; t = Market index
+**      a[it] = Indicator of entry of firm i in market t
+**      x[it] = (kx x 1) vector of firm i's characteristics
+**              which have variability over markets.
+**      z[t]  = (kz x 1) vector of market characteristics.
+**      e[it] = Firm i's private information in market t.
+**
+**  Profits:
+**  --------
+**  No entry:   Uit(0) = 0
+**
+**  Entry:      Uit(1) = alphai + beta'*x[it] + gama'*z[t]
+**                     - delta*ln(N[-it]) + 1) + e[it]
+**  where:
+**      alphai = Firm i's fixed effect
+**      N[-it] = Number of firms, other than i, 
+**               operating in market t. 
+**      beta, gama and delta are parameters
+**
+**  ----------------------------------------------------------------------------
+**
+**  FORMAT:
+** {best,varb} = nplgame(aobs,xobs,zobs,kiter)
+**
+**  Inputs:
+**
+**      aobs    - (nobs x nplayer) matrix with observations of
+**                firms' entry decisions (1=entry ; 0=no entry)
+**
+**      xobs    - (nobs x nplayer*kx) matrix with observations
+**                of firm-specific exogenous vars.
+**                Columns are sorted first by variable and then by firm.
+**
+**      zobs    - (nobs x kz) matrix with the observations
+**                of market characteristics.
+**
+**      kiter   - Number of NPL iterations
+**
+**  Outputs:
+**
+**      best    - (kparam x kiter) matrix with estimates of parameters
+**                (alpha_1 | alpha_2 | ... | alpha_n | 
+**                    beta | gama | delta )
+**                First column is the 1st-stage NPL, second column is
+**                the 2nd-stage NPL, and so on.
+**
+**      varb    - (kparam x kaparam*kiter) matrix with estimated 
+**                covariance matrices of the NPL estimators. 
+*/
+
+proc (2) = nplgame(aobs,xobs,zobs,kiter) ;
+  local nobs, nplayer, kx, kz, kparam, namesb, 
+        namespi, best, varb, pest0, ixzobs, expsumi, 
+        iter, i, pni, explan, b0, v0 ;
+  nobs = rows(aobs) ;
+  nplayer = cols(aobs) ;
+  kx = cols(xobs)/nplayer ;
+  if (kx/=int(kx)); "ERROR"; end; endif ;
+  kz = cols(zobs) ;
+  kparam = nplayer + kx + kz + 1 ;
+  best = zeros(kparam,kiter) ;
+  varb = zeros(kparam,kparam*kiter) ;
+  
+  @ -------------------------------------------------- @
+  @ 1. Initial estimates of entry probabilities: Pi(x) @
+  @ -------------------------------------------------- @
+
+  @ Nonparametric @
+  pest0 = zeros(nobs,nplayer) ;
+  i=1 ;
+  do while i<=nplayer ;
+    pest0[.,i] = freqprob(aobs[.,i],xobs~zobs,xobs~zobs) ;
+    i=i+1 ;
+  endo ;
+
+/*
+  @ Parametric @ 
+  namespi = "constant" 
+          | (0 $+ "bx" $+ ftocv(seqa(1,1,nplayer*kx),1,0))
+          | (0 $+ "bz" $+ ftocv(seqa(1,1,kz),1,0)) ;
+  pest0 = zeros(nobs,nplayer) ;
+  i=1 ;
+  do while i<=nplayer ;
+    {b0,v0} = milogit(aobs[.,i],ones(nobs,1)~xobs~zobs,namespi) ;
+    pest0[.,i] = 1./(1+exp(-(ones(nobs,1)~xobs~zobs)*b0)) ;
+    i=i+1 ;
+  endo ;
+*/
+  
+  @ ------------------ @
+  @ 2. NPL algorithm   @
+  @ ------------------ @
+  aobs = reshape(aobs',nplayer*nobs,1) ;
+  ixzobs = reshape(xobs',kx,nplayer*nobs)' ;
+  ixzobs = (eye(nplayer).*.ones(nobs,1))
+         ~ ixzobs
+         ~ (ones(nplayer,1).*.zobs) ;    
+  expsumi = zeros(nobs,nplayer) ;
+  iter=1 ;
+  do while iter<=kiter ;
+
+    "" ;
+    iter ;; "stage NPL estimator" ; 
+    "" ;
+
+    @ 2.1. Computing E(ln(Sum(aj)+1)) @
+    i=1 ;
+    do while i<=nplayer ;
+      if (i==1) ;
+        pni = pest0[.,2:nplayer] ;
+      elseif (i>1).AND(i<nplayer) ;
+        pni = pest0[.,1:i-1]~pest0[.,i+1:nplayer] ;
+      elseif (i==nplayer) ;
+        pni = pest0[.,1:nplayer-1] ;
+      endif ;
+      pni = psumbern(pni') ;
+      expsumi[.,i] = pni'*ln(seqa(1,1,nplayer)) ;
+      i=i+1 ;
+    endo ;    
+
+    @ 2.2. Estimation @
+    namesb = (0 $+ "alpha" $+ ftocv(seqa(1,1,nplayer),1,0))
+         | (0 $+ "betax" $+ ftocv(seqa(1,1,kx),1,0))
+         | (0 $+ "gamaz" $+ ftocv(seqa(1,1,kz),1,0))
+         | "delta" ;   
+    explan = ixzobs
+           ~ (-reshape(expsumi',nplayer*nobs,1)) ;
+    {b0,v0} = milogit(aobs,explan,namesb) ;  
+    best[.,iter] = b0 ;
+    varb[.,(iter-1)*kparam+1:iter*kparam] = v0 ;
+    pest0 = 1./(1+exp(-explan*b0)) ;
+    pest0 = reshape(pest0,nplayer,nobs)' ;
+    iter=iter+1 ;
+  endo ;
+  retp(best,varb) ;
+endp ;

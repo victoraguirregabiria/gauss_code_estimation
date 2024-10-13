@@ -1,0 +1,107 @@
+/*
+**  KPIEGAME.SRC   Procedure that estimates the structural parameters 
+**                 of an entry model of incomplete information
+**                 using 1-stage of the Nested Pseudo-Likelihood (NPL) 
+**                 algorithm
+**
+**  by Victor Aguirregabiria
+**  Last revision: February, 2003
+**
+**  ---------------------------------------------------------------------
+**                              MODEL
+**  ---------------------------------------------------------------------
+**  i = Firm index; t = Market index
+**      a[it] = Indicator of entry of firm i in market t
+**      x[it] = (kx x 1) vector of firm i's characteristics
+**              which have variability over markets.
+**      z[t]  = (kz x 1) vector of market characteristics.
+**      e[it] = Firm i's private information in market t.
+**
+**  Profits:
+**  --------
+**  No entry:   Uit(0) = 0
+**
+**  Entry:      Uit(1) = alphai + beta'*x[it] + gama'*z[t]
+**                     - delta*ln(N[-it]) + 1) + e[it]
+**  where:
+**      alphai = Firm i's fixed effect
+**      N[-it] = Number of firms, other than i, 
+**               operating in market t. 
+**      beta, gama and delta are parameters
+**
+**  ----------------------------------------------------------------------------
+**
+**  FORMAT:
+** {best,varb} = kpiegame(aobs,xobs,zobs,prob0)
+**
+**  Inputs:
+**
+**      aobs    - (nobs x nplayer) matrix with observations of
+**                firms' entry decisions (1=entry ; 0=no entry)
+**
+**      xobs    - (nobs x nplayer*kx) matrix with observations
+**                of firm-specific exogenous vars.
+**                Columns are sorted first by variable and then by firm.
+**
+**      zobs    - (nobs x kz) matrix with the observations
+**                of market characteristics.
+**
+**      pest0   - (nobs x nplayer) matrix of initial equilibrium
+**                probabilities
+**
+**  Outputs:
+**
+**      best    - (kparam x kiter) matrix with estimates of parameters
+**                (alpha_1 | alpha_2 | ... | alpha_n | 
+**                    beta | gama | delta )
+**                First column is the 1st-stage NPL, second column is
+**                the 2nd-stage NPL, and so on.
+**
+**      varb    - (kparam x kaparam*kiter) matrix with estimated 
+**                covariance matrices of the NPL estimators. 
+*/
+
+proc (2) = kpiegame(aobs,xobs,zobs,pest0) ;
+  local nobs, nplayer, kx, kz, kparam, namesb, 
+        i, pni, expsumi, explan, b0, v0 ;
+  nobs = rows(aobs) ;
+  nplayer = cols(aobs) ;
+  kx = cols(xobs)/nplayer ;
+  if (kx/=int(kx)); "ERROR"; end; endif ;
+  kz = cols(zobs) ;
+  kparam = nplayer + kx + kz + 1 ;
+  
+  @ ----------------------------- @
+  @ 1. Computing E(ln(Sum(aj)+1)) @
+  @ ----------------------------- @
+  expsumi = zeros(nobs,nplayer) ;
+  i=1 ;
+  do while i<=nplayer ;
+    if (i==1) ;
+      pni = pest0[.,2:nplayer] ;
+    elseif (i>1).AND(i<nplayer) ;
+      pni = pest0[.,1:i-1]~pest0[.,i+1:nplayer] ;
+    elseif (i==nplayer) ;
+      pni = pest0[.,1:nplayer-1] ;
+    endif ;
+    pni = psumbern(pni') ;
+    expsumi[.,i] = pni'*ln(seqa(1,1,nplayer)) ;
+    i=i+1 ;
+  endo ;    
+
+  @ --------------@
+  @ 2. Estimation @
+  @ --------------@
+  namesb = (0 $+ "alpha" $+ ftocv(seqa(1,1,nplayer),1,0))
+         | (0 $+ "betax" $+ ftocv(seqa(1,1,kx),1,0))
+         | (0 $+ "gamaz" $+ ftocv(seqa(1,1,kz),1,0))
+         | "delta" ;   
+  aobs = reshape(aobs',nplayer*nobs,1) ;
+  explan = reshape(xobs',kx,nplayer*nobs)' ;
+  explan = (eye(nplayer).*.ones(nobs,1))
+         ~ explan
+         ~ (ones(nplayer,1).*.zobs)
+         ~ (-reshape(expsumi',nplayer*nobs,1)) ;
+  {b0,v0} = milogit(aobs,explan,namesb) ;  
+  retp(b0,v0) ;
+endp ;

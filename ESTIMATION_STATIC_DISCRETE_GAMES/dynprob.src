@@ -1,0 +1,125 @@
+/*
+**  DYNPROB.SRC     Procedure for the mapping from probabilities 
+**                  to probabilities in a dynamic model of entry with 
+**                  incomplete information
+**
+**  by Victor Aguirregabiria
+**  Last revision: August, 2001
+**
+**
+**  -----------------------------------------------------------
+**                              MODEL
+**  -----------------------------------------------------------
+**      Let:
+**          ai[t] = Decision of entry for firm i at period t
+**                  ( 0: noentry ; 1: entry )
+**          a[t]  = Vector with all firms' entry decisions at period t
+**
+**      One-period expected profits:  ERi(ai[t],a[t-1])
+**      -----------------------------------------------
+**      No entry (ai[t] = 0):
+**          ERi(0,a[t-1]) = nu
+**
+**      No entry (ai[t] = 1):
+**          ERi(1,a[t-1]) = gamai - coste * (1-ai[t-1]) 
+**                        - delta * ( Sumj Pj1(a[t-1]) )
+**
+**      where:
+**          nu    = A firm's scrapping value
+**          gamai = Firm i's profitability index
+**          coste = Entry cost
+**          delta = Strategic interactions parameter
+**          Pj1(a[t-1]) = Probability of entry for firm j at period t
+**
+**  ----------------------------------------------------------------------------
+**
+**  FORMAT:
+**      prob1 = dynprob(theta,prob0)
+**
+**  Inputs:
+**
+**      theta   - Model parameters
+**                theta = (gama | nu | coste | delta | seps | beta )
+**
+**      prob0   - (nplay x nstate) vector with players' probabilities of entry
+**                 "nplay" is the number of players
+**                 "nstate" is the number of possible states
+**                      nstate = 2^nplay
+**  Outputs:
+**
+**      prob1   - (nplay x nstate) vector with players' probabilities of entry
+**
+*/
+
+proc (1) = dynprob(theta,prob0) ;
+  local nplay, nums, gama0, nu0, coste0, delta0, seps0, beta0,
+  
+  
+  kx, kz, beta0, beta, g0, d0, probnum, prob1, 
+        numcom, i, p0_i, a_i, iter, nentry_i, flag, conta ;
+        
+  nplay  = rows(prob0) ;
+  nums   = cols(prob0) ;
+  gama0  = theta[1:nplay] ;
+  nu0    = theta[nplay+1] ;
+  coste0 = theta[nplay+2] ;
+  delta0 = theta[nplay+3] ;
+  seps0  = theta[nplay+4] ;
+  beta0  = theta[nplay+5] ;
+  
+  
+  prob1 = zeros(nplay,1) ;
+  
+  numcom = 2^(nplay-1) ;
+  probnum = zeros(nplay,nplay) ;
+  
+  
+
+  if (nplay==2) ;
+    probnum = ((1-prob0[2]) ~ prob0[2])
+            | ((1-prob0[1]) ~ prob0[1]) ;
+  elseif (nplay>2) ;
+    i=1 ;
+    do while i<=nplay ;
+      if (i==1) ;
+        p0_i = prob0[2:nplay] ;
+      elseif (i>1)AND(i<nplay) ;
+        p0_i = prob0[1:i-1] | prob0[i+1:nplay] ;
+      elseif (i==nplay) ;
+        p0_i = prob0[1:nplay-1] ;
+      endif ;
+      a_i = zeros(nplay-1,1) ;
+      iter=1 ;
+      do while (iter<=numcom) ;
+        @ Acumulating prob for number of entrants @
+        nentry_i = sumc(a_i) ;
+        probnum[i,nentry_i+1] = probnum[i,nentry_i+1]
+                    + exp(sumc(a_i.*ln(p0_i)+(1-a_i).*ln(1-p0_i))) ;
+        @ Generating new a_i @
+        if (a_i[nplay-1]==0) ;
+          a_i = (a_i[1:nplay-2] | 1) ;
+        else ;
+          flag=0 ;
+          conta=nplay-2 ;
+          do while (flag==0)AND(conta>1) ;
+            if (a_i[conta]==0) ;
+              a_i = (a_i[1:1:conta-1] | 1 | zeros(nplay-1-conta,1)) ;
+              flag=1 ;
+            endif ;
+            conta=conta-1 ;
+          endo ;
+          if (conta==1)AND(flag==0) ;
+            a_i = (1 | zeros(nplay-1-conta,1)) ;
+          endif ;
+        endif ;
+        iter=iter+1 ;
+      endo ;
+      i=i+1 ;
+    endo ;
+  endif ;
+
+  prob1 = beta0 + x0*beta + z0*g0 
+        - d0 * (probnum * ln(1+seqa(0,1,nplay))) ;
+  prob1 = cdfn(prob1) ;
+  retp(prob1,probnum) ;
+endp ;
