@@ -15,4 +15,4 @@ multilog example   Program that runs an example calling the procedure multilog.s
 clogit.src       Procedure for the Maximum Likelihood estimation of McFadden's Conditional Logit.
 
 clogit example   Program that runs an example calling the procedure clogit.src.
--------------------------------------------------------------
+//
