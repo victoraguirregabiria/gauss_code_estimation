@@ -1,0 +1,102 @@
+/*
+** ---------------------------------------------------------------
+** MIPROBIT - Estimation of a Probit Model by Maximum Likelihood
+**            The optimization algorithm is a Newton's method.
+**
+** by Victor Aguirregabiria
+**
+** Last revision: September 2001
+** ---------------------------------------------------------------
+**
+** Format      {best,varest} = miprobit(ydum,x,b0,out)
+**
+** Input        ydum    - vector of observations of the dependent variable
+**              x       - matrix of explanatory variables
+**              b0      - initial values of parameters
+**              out     - 0=no table of results; 1=table with estimation results
+**
+**  Output      best    - ML estimates
+**              varest  - estimate of the covariance matrix
+** ---------------------------------------------------------------
+*/
+
+proc (2) = miprobit(ydum,x,b0,out) ;
+  local myzero, nobs, nparam, eps1, eps2, namesb, iter, llike,
+        criter1, criter2, Fxb0, phixb0, lamdab0, dlogLb0,
+        d2logLb0, b1, lamda0, lamda1, Avarb, sdb, tstat,
+        numy1, numy0, logL0, LRI, pseudoR2, k ;
+
+  myzero = 1e-36 ;
+  nobs = rows(ydum) ;
+  nparam = cols(x) ;
+  eps1 = 1E-6 ;
+  eps2 = 1E-6 ;
+  
+  namesb = seqa(1,1,nparam) ;
+  namesb = 0 $+ "b" $+ ftocv(namesb,2,0);
+
+  iter=1 ;
+  llike = 1000 ;
+  criter1 = 1000 ;
+  criter2 = 1000 ;
+
+  do while (criter1>eps1).OR(criter2>eps2) ;
+/*  
+    "" ;
+    "Iteration                = " iter ;
+    "Log-Likelihood function  = " llike ;
+    "Norm of b(k)-b(k-1)      = " criter1 ;
+    "Norm of Gradient         = " criter2 ;
+    "" ;
+*/    
+    Fxb0 = cdfn(x*b0) ;
+    Fxb0 = Fxb0 + (myzero - Fxb0).*(Fxb0.<myzero)
+                + (1-myzero - Fxb0).*(Fxb0.>1-myzero);
+    llike = ydum'*ln(Fxb0) + (1-ydum)'*ln(1-Fxb0) ;
+    phixb0 = pdfn(x*b0) ;
+    lamdab0 = ydum.*(phixb0./Fxb0) + (1-ydum).*(-phixb0./(1-Fxb0)) ;
+    dlogLb0 = x'*lamdab0 ;
+    d2logLb0 =   ((lamdab0.*(lamdab0 + x*b0)).*x)'*x ;
+    b1 = b0 + invpd(d2logLb0)*dlogLb0 ;
+    criter1 = sqrt( (b1-b0)'*(b1-b0) ) ;
+    criter2 = sqrt( dlogLb0'dlogLb0 ) ;
+
+    b0 = b1 ;
+    iter = iter + 1 ;
+  endo ;
+
+  Fxb0 = cdfn(x*b0) ;
+  Fxb0 = Fxb0 + (myzero - Fxb0).*(Fxb0.<myzero)
+              + (1-myzero - Fxb0).*(Fxb0.>1-myzero);
+  llike = ydum'*ln(Fxb0) + (1-ydum)'*ln(1-Fxb0) ;
+  phixb0 = pdfn(x*b0) ;
+  lamda0 = -phixb0./(1-Fxb0) ;
+  lamda1 =  phixb0./Fxb0 ;
+  Avarb  = ((lamda0.*lamda1).*x)'*x ;
+  Avarb  = inv(-Avarb) ;
+  sdb    = sqrt(diag(Avarb)) ;
+  tstat  = b0./sdb ;
+  numy1  = sumc(ydum) ;
+  numy0  = nobs - numy1 ;
+  logL0  = numy1*ln(numy1) + numy0*ln(numy0) - nobs*ln(nobs) ;
+  LRI    = 1 - llike/logL0 ;
+  pseudoR2 = 1 - ( (ydum - Fxb0)'*(ydum - Fxb0) )/numy1 ;
+  if (out==1) ;
+    "Number of Iterations     = " iter ;
+    "Log-Likelihood function  = " llike ;
+    "Likelihood Ratio Index   = " LRI ;
+    "Pseudo-R2                = " pseudoR2 ;
+    "" ;
+    "------------------------------------------------------------------";
+    "       Parameter     Estimate        Standard        t-ratios";
+    "                                     Errors" ;
+    "------------------------------------------------------------------";
+    k=1;
+    do while k<=nparam;
+      print $namesb[k];;b0[k];;sdb[k];;tstat[k];
+      k=k+1 ;
+    endo;
+    "------------------------------------------------------------------";
+  endif ;
+  retp(b0,Avarb) ;
+endp ;

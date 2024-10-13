@@ -1,0 +1,102 @@
+/*
+** -----------------------------------------------------------------
+** MILOGIT - Estimation of a Logit Model by Maximum Likelihood
+**           The optimization algorithm is a Newton's method.
+**
+** by Victor Aguirregabiria
+**
+** Last revision: September 2001
+** -----------------------------------------------------------------
+**
+** Format      {best,varest} = milogit(ydum,x,namesb)
+**
+** Input        ydum    - vector of observations of the dependent variable
+**              x       - matrix of explanatory variables
+**              namesb  - vector with names of parameters
+**
+** Output       best    - ML estimates
+**              varest  - estimate of the covariance matrix
+** -----------------------------------------------------------------
+*/
+
+proc (1) = loglogit(ydum,x,b) ;
+  local expxb, Fxb, llik, myzero ;
+  myzero = 1E-12 ;
+  expxb = exp(-x*b) ;
+  Fxb = 1./(1+expxb) ;
+  Fxb = Fxb + (myzero - Fxb).*(Fxb.<myzero)
+            + (1-myzero - Fxb).*(Fxb.>1-myzero);
+  llik = ydum'*ln(Fxb) + (1-ydum)'*ln(1-Fxb) ;
+  retp(llik) ;
+endp ;
+
+
+proc (2) = milogit(ydum,x,namesb) ;
+  local nobs, nparam, eps1, eps2, iter, criter1, 
+        criter2, expxb0, Fxb0, phixb0, lamdab0, 
+        dlogLb0, d2logLb0, b0, b1, lamda0, lamda1, 
+        Avarb, sdb, tstat, llike, numy1, numy0, 
+        logL0, LRI, pseudoR2, k ;
+
+  format /mb1 /ros 16,6 ;
+
+  nobs = rows(ydum) ;
+  nparam = cols(x) ;
+  eps1 = 1E-4 ;
+  eps2 = 1E-2 ;
+  b0 = zeros(nparam,1) ;  
+  iter=1 ;
+  criter1 = 1000 ;
+  criter2 = 1000 ;
+
+  do while (criter1>eps1).OR(criter2>eps2) ;
+/*
+    "" ;
+    "Iteration                = " iter ;
+    "Log-Likelihood function  = " loglogit(ydum,x,b0) ;
+    "Norm of b(k)-b(k-1)      = " criter1 ;
+    "Norm of Gradient         = " criter2 ;
+    "" ;
+*/    
+    expxb0 = exp(-x*b0) ;
+    Fxb0 = 1./(1+expxb0) ;
+    dlogLb0 = x'*(ydum - Fxb0) ;
+    d2logLb0 =  ( (Fxb0.*(1-Fxb0)).*x )'*x ;
+    b1 = b0 + invpd(d2logLb0)*dlogLb0 ;
+    criter1 = sqrt( (b1-b0)'*(b1-b0) ) ;
+    criter2 = sqrt( dlogLb0'dlogLb0 ) ;
+    b0 = b1 ;
+    iter = iter + 1 ;
+  endo ;
+
+  expxb0 = exp(-x*b0) ;
+  Fxb0 = 1./(1+expxb0) ;
+  Avarb = - ( (Fxb0.*(1-Fxb0)).*x )'*x ;
+  Avarb = inv(-Avarb) ;
+  sdb    = sqrt(diag(Avarb)) ;
+  tstat  = b0./sdb ;
+  llike  = loglogit(ydum,x,b0) ;
+  numy1  = sumc(ydum) ;
+  numy0  = nobs - numy1 ;
+  logL0  = numy1*ln(numy1) + numy0*ln(numy0) - nobs*ln(nobs) ;
+  LRI    = 1 - llike/logL0 ;
+  pseudoR2 = 1 - ( (ydum - Fxb0)'*(ydum - Fxb0) )/numy1 ;
+
+  "Number of Iterations     = " iter ;
+  "Log-Likelihood function  = " llike ;
+  "Likelihood Ratio Index   = " LRI ;
+  "Pseudo-R2                = " pseudoR2 ;
+  "" ;
+  "     ----------------------------------------------------------------";
+  "         Parameter       Estimate        Standard        t-ratios";
+  "                                         Errors" ;
+  "     ----------------------------------------------------------------";
+  k=1;
+  do while k<=nparam;
+    print $namesb[k];;b0[k];;sdb[k];;tstat[k];
+    k=k+1 ;
+  endo;
+  "     ----------------------------------------------------------------";
+
+  retp(b0,avarb) ;
+endp ;
