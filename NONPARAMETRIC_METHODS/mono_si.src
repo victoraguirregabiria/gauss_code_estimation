@@ -1,0 +1,155 @@
+/*
+/   MONO_SI.SRC
+/
+/   This procedure estimates a nonparametric regression function
+/   using the SI (Smoothing-Isotonising) estimator in the paper
+/   by Mammen (AS, 1991). The method proceeds in two steps.
+/   The first step smoothes the data using a Nadaraya-Watson 
+/   kernel estimator. The second step applies a max-min 
+/   formula (isotonic regression) to the kernel estimates 
+/   in order to monotonize the regression.
+/
+/   Remark 1: This procedure calculates the optimal bandwidth
+/   using a cross-validation method that is applied on 
+/   the entire estimator (not just on the first step).
+/
+/
+/   Written by:  Victor Aguirregabiria and Gustavo Vicentini
+/                July, 2005
+/
+/   Format:  {mest,hopt,cv} = mono_si(xobs,yobs,xpred,hgrid,figure)
+/
+** Input        xobs    - (N x 1) vector of observations of the
+**                        conditioning variable.
+**
+**              yobs    - (N x 1) vector of observations of the
+**                        dependent variable.
+**
+**              xpred   - (q x 1) vector of values for the conditioning
+**                        variable where the conditional expectation
+**                        will be estimated.
+**
+**              hgrid   - (m x 1) vector with the grid points on which
+**                        the CV procedure will search for the optimal
+**                        bandwidth.
+**
+**              figure  - 0=No graphs; 1=Graphs
+**
+**  Output      mest    - (q x 1) vector of estimates
+**
+**              hopt    - Value of the optimal bandwidth
+**
+**              cv      - (m x 1) vector with values of the CV criterion function
+**
+*/
+
+
+proc (1) =  sifixh(x0,y0,xp,hval) ;
+  local myzero, denom,  np, n0, xuni, nuni, j, kern, 
+        mest_s, zstar, msample, mest ;
+  myzero = 1e-16 ;
+  np = rows(xp) ;
+  n0 = rows(x0) ;
+  xuni = union(x0,xp,1) ;
+  xuni = sortc(xuni,1) ;
+  nuni = rows(xuni) ;
+
+  mest_s = zeros(nuni,1);
+  j=1 ;
+  do while j<=nuni ;
+    kern = pdfn((xuni[j]-x0)/hval) ;
+    denom = maxc(sumc(kern) | myzero) ;
+    mest_s[j] = sumc(kern.*y0)/denom ;
+    j=j+1;
+  endo;
+
+  zstar = zeros(nuni,1) ;
+  j=1 ;
+  do while j<=nuni ;
+    zstar[j] = minc(cumsumc(mest_s[j:nuni])./seqa(1,1,nuni-j+1)) ;
+    j=j+1 ;
+  endo ;
+
+  msample = zeros(nuni,1) ;
+  msample[1] = zstar[1] ;
+  j=2 ;
+  do while j<=nuni ;
+    msample[j] = maxc(msample[j-1] | zstar[j]) ;
+    j=j+1 ;
+  endo ;
+  
+  mest = zeros(np,1) ;
+  j=1 ;
+  do while j<=np ;
+    mest[j] = msample[minindc(abs(xuni-xp[j]))] ;
+    j=j+1 ;
+  endo ;
+  
+  retp(mest) ;
+endp ;
+
+
+
+proc (3) =  mono_si(xobs,yobs,xpred,hgrid,figure) ;
+  local nobs, numh, npred, cv, i, m_cv, j, obs_j,
+        kern, ky, hcv, mest ;
+  
+  nobs = rows(xobs) ;
+  npred = rows(xpred) ;
+  numh = rows(hgrid) ;
+  
+  if (numh>1) ;
+    @ ------------------- @
+    @ 1. Cross-Validation @
+    @ ------------------- @
+    cv = zeros(numh,1) ;
+    i=1 ;
+    do while i<=numh ;
+      m_cv = zeros(nobs,1) ;
+      j=1;
+      do while j<=nobs ;
+        obs_j = selif(xobs~yobs,seqa(1,1,nobs)./=j) ;
+        m_cv[j] = sifixh(obs_j[.,1],obs_j[.,2],xobs[j],hgrid[i]) ;
+        j=j+1;
+      endo;
+      cv[i] = meanc((m_cv-yobs).^2) ;
+      i=i+1;
+    endo;
+    hcv = hgrid[minindc(cv)] ;
+  else ;
+    hcv = hgrid ;
+    cv = 0 ;
+  endif ;
+  
+  @ -------------@
+  @ 2. Estimator @
+  @ -------------@
+  mest = sifixh(xobs,yobs,xpred,hcv) ;
+      
+  @ ----------@
+  @ 4. Graphs @
+  @ ----------@
+ if (figure==1)AND(numh>1) ;
+    library pgraph ;
+    graphset ;
+    begwind;
+      window(2,1,0);
+      setwind(1);
+        title("CROSS-VALIDATION FOR 'h' (GAUSSIAN KERNEL)") ;
+        xlabel("Bandwidth 'h'") ;
+        ylabel("CV(h)") ;
+        xy(hgrid,cv) ;
+      nextwind;
+        title("Smooth-Then-Monotonize: IS") ;
+        xlabel("X") ;
+        ylabel("Y") ;
+        xy(xpred,mest) ;
+    endwind;
+  endif ;
+
+retp(mest,hcv,cv);
+endp;
+
+
+
+

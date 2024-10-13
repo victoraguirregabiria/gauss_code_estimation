@@ -1,0 +1,50 @@
+/*
+**  FREQPROB.SRC   Procedure that obtains a frequency estimation
+**                 of Prob(Y|X) where Y is a vector of binary 
+**                 variables and X is a vector of discrete variables
+**
+**  by Victor Aguirregabiria
+**  First version: February, 2003
+**  Last revision: November, 2003
+**
+**  FORMAT:
+**      freqp = freqprob(yobs,xobs,xval) 
+**
+**  Inputs:
+**
+**  yobs    - (nobs x q) vector with sample observations 
+**            of Y = Y1 ~ Y2 ~ ... ~ Yq
+**            
+**
+**  xobs    - (nobs x k) matrix with sample observations of X
+**
+**  xval    - (numx x k) matrix with the values of X for which
+**            we want to estimate Prob(Y|X).
+**
+**  Outputs:
+**
+**  freqp   - (numx x q) vector with frequency estimates of
+**            Pr(Y|X) for each value in xval.
+**            Pr(Y1=1|X) ~ Pr(Y2=1|X) ~ ... ~ Pr(Yq=1|X) 
+**
+*/
+
+proc (1) = freqprob(yobs,xobs,xval) ;
+  local numx, numq, prob1, t, selx, denom, numer ; 
+  numx = rows(xval) ;
+  numq = cols(yobs) ;
+  prob1 = zeros(numx,numq) ;
+  t=1 ;
+  do while t<=numx ;
+    selx = prodc((xobs.==xval[t,.])') ;
+    denom = sumc(selx) ;
+    if (denom==0) ;
+      prob1[t,.] = zeros(1,numq) ;
+    else ;
+      numer = sumc(selx.*yobs) ;
+      prob1[t,.] = (numer')./denom ;
+    endif ;
+    t=t+1 ;
+  endo ;
+  retp(prob1) ;
+endp ;

@@ -1,0 +1,32 @@
+/*
+** KERNEL1 - Kernel Estimation of a Univariate Density Function 
+**           using a Gaussian Kernel 
+** 
+**           The bandwith is equal to Silverman's rule of thumb
+**
+** by Victor Aguirregabiria
+** Last version: December 2001
+**
+** Format:      pest = kernel1(xobs,xpred)
+**
+** Input:       xobs    - (N x 1) vector of observations
+**              xpred   - (K x 1) vector of values where the pdf 
+**                        will be estimated
+**
+** Output:      pest    - (K x 1) vector of estimates
+**
+*/
+
+
+proc (1) = kernel1(xobs,xpred) ;
+  local nobs, band0, pest ;
+  nobs  = rows(xobs) ;
+  
+  @ Silverman's rule of thumb bandwidth @
+  band0 = (1.364 * stdc(xobs))/((pi*nobs)^(1/5)) ;  
+
+  pest = sumc(pdfn(((xpred') - xobs)./band0))/(nobs*band0) ;
+  retp(pest) ;
+endp ;
+
+

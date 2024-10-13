@@ -1,0 +1,142 @@
+
+/*
+/   mono_is_cv.SRC
+/
+/   This procedure SMOOTHES-THEN-MONOTONIZES a function
+/   using the min(max)  or  max(min)  closed-form expression
+/   and a kernel based local regression.
+/   The optimal window is search by using the Cross-Validation
+/   method (CV) on the entire estimator.
+/
+/   Written by:  Victor Aguirregabiria and Gustavo Vicentini
+/                July, 2005
+/
+/   Format:  {mest_is} = mono_is_cv(xobs,yobs,xpred)
+/
+** Input        xobs    - (N x K) matrix of observations of the K
+**                        conditioning variables.
+**
+**              yobs    - (N x 1) vector of observations of the
+**                        dependent variable.
+**              xpred   - (q x K) matrix of values for the conditioning
+**                        variables where the conditional expectation
+**                        will be estimated.
+**
+**  Output      mest_is  - (q x 1) vector of estimates
+**
+*/
+
+proc (3) =  mono_is_cv(xobs,yobs,xpred) ;
+
+  local nobs, numh, hcv0, h, convcrit, crit,
+        cv, i, m_cv, j, obs_j, mest_i,
+        kern, ky, hcv, h0, steph, mest_is ;
+
+
+/************************/
+/* Some constants       */
+/************************/
+
+  nobs = rows(xobs) ;
+  numh  = 40 ;                                  // size of grid inside the 
+loop
+  hcv0 = 1.06*stdc(xobs)*(rows(xobs)^(-.2)) ;   // initial guess for optimal 
+'hcv' (Silverman's)
+  h = (seqa(1/numh^2,1/(numh-10),numh).^8)*hcv0 ;     // initial guess for 
+grid of window
+  convcrit = 1e-3 ;
+  crit = 100 ;
+
+  xobs = sortc(xobs~yobs,1) ;
+  yobs = xobs[.,2] ;
+  xobs = xobs[.,1] ;
+  nobs = rows(xobs) ;
+
+/********************************/
+/* Search for optimal 'hcv'     */
+/* at the grid 'h'              */
+/********************************/
+
+   do while crit>=convcrit  ;
+   cv = zeros(numh,1) ;
+    i=1;
+    do while i<=numh;
+    m_cv = zeros(nobs,1) ;
+      j=1;
+      do while j<=nobs;
+       obs_j = selif(xobs~yobs,seqa(1,1,nobs)./=j) ;
+       {mest_i} = mono(obs_j[.,1],obs_j[.,2]) ;
+       kern = pdfn((xobs[j]-obs_j[.,1])/h[i]) ;
+       ky = kern.*mest_i ;
+       m_cv[j] = sumc(ky)/sumc(kern) ;
+      j=j+1;
+      endo;
+     m_cv = missrv(m_cv,0);
+     m_cv = delif(m_cv~yobs,m_cv[.,1].==0) ;
+     cv[i] = meanc((m_cv[.,1]-m_cv[.,2]).^2) ;
+     if scalinfnanmiss(cv[i])==1;
+     cv[i]=0 ;  endif;
+    i=i+1;
+    endo;
+    cv = cv + (cv.==0).*(maxc(cv)+.001) ;
+    xtics(h[1],h[numh],
+        (h[numh]-h[1])/5,(h[numh]-h[1])/5) ;
+    xy(h,cv) ;
+    hcv = h[minindc(cv)] ;
+    crit = abs(hcv0-hcv) ;
+    if (crit<=convcrit) ;
+      break;  else;
+      hcv0 = hcv ;
+      h = h[uniqindx(cv,1)] ;                 // sorts the windows by CV
+      h = sortc(h[1:7],1) ;
+      steph = (h[7]-h[1])/(numh-11) ;
+      h = seqa(h[1]-5*steph,steph,numh) ;       // new grid
+      h = (h.>0).*h+(h.<0)*(minc(abs(h))/2) ;
+    endif;
+  endo ;
+
+/**************************************/
+/* Compute 'mest_is' with the optimal */
+/* 'hcv' and  min(max) formula        */
+/**************************************/
+
+  {mest_i} = mono(xobs,yobs) ;
+  {mest_is} = nadaraya(xobs,mest_i,xpred,hcv) ;
+
+/******************************/
+/* Plot results               */
+/******************************/
+
+  begwind;
+  window(2,1,0);
+
+    setwind(1);
+    title("CROSS-VALIDATION FOR 'h' (GAUSSIAN KERNEL)") ;
+    xlabel("Bandwidth 'h'") ;
+    ylabel("CV(h)") ;
+    xtics(minc(h),maxc(h),
+           (maxc(h)-minc(h))/5,(maxc(h)-minc(h))/5) ;
+    xy(h,cv) ;
+
+    nextwind;
+    title("Monotonize-Then-Smooth Mis") ;
+    xlabel("X") ;
+    ylabel("Y") ;
+    xtics(minc(xpred),maxc(xpred),
+       (maxc(xpred)-minc(xpred))/10,(maxc(xpred)-minc(xpred))/10) ;
+    xy(xpred,mest_is) ;
+
+
+retp(mest_is,hcv,cv);
+
+endp;
+
+
+
+
+
+
+
+
+
+

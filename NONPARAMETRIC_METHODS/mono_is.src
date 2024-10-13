@@ -1,0 +1,158 @@
+/*
+/   MONO_IS.SRC
+/
+/   This procedure estimates a nonparametric regression function
+/   using the IS (Isotonising-Smoothing) estimator in the paper
+/   by Mammen (AS, 1991). The method proceeds in two steps.
+/   The first step applies a max-min formula (isotonic regression) 
+/   to the original data. The second step smoothes the isotonic
+/   regression by using a Nadaraya-Watson kernel estimator. 
+/
+/   Remark 1: This procedure calculates the optimal bandwidth
+/   using a cross-validation method that is applied on 
+/   the entire estimator.
+/
+/   Written by:  Victor Aguirregabiria and Gustavo Vicentini
+/                July, 2005
+/
+/   Format:  mest_is = mono_is(xobs,yobs,xpred,hgrid,figure)
+/
+** Input        xobs    - (N x 1) vector of observations of the
+**                        conditioning variable.
+**
+**              yobs    - (N x 1) vector of observations of the
+**                        dependent variable.
+**
+**              xpred   - (q x 1) vector of values for the conditioning
+**                        variable where the conditional expectation
+**                        will be estimated.
+**
+**              hgrid   - (m x 1) vector with the grid points on which
+**                        the CV procedure will search for the optimal
+**                        bandwidth.
+**
+**              figure  - 0=No graphs; 1=Graphs
+**
+**  Output      mest    - (q x 1) vector of estimates
+**
+**              hopt    - Value of the optimal bandwidth
+**
+**              cv      - (m x 1) vector with values of the CV criterion function
+**
+*/
+
+proc (1) =  iso_is(x0,y0) ;
+  local buff, n0, zstar, i, mest, jstar ;
+  buff = sortc(x0~y0,1) ;
+  x0 = buff[.,1] ;
+  y0 = buff[.,2] ;
+  n0 = rows(x0) ;
+
+  zstar = zeros(n0,1) ;
+  i=1 ;
+  do while i<=n0 ;
+    zstar[i] = minc(cumsumc(y0[i:n0])./seqa(1,1,n0-i+1)) ;
+    i=i+1 ;
+  endo ;
+
+  mest = zeros(n0,1) ;
+  mest[1] = zstar[1] ;
+  i=2 ;
+  do while i<=n0 ;
+    mest[i] = maxc(mest[i-1] | zstar[i]) ;
+    i=i+1 ;
+  endo ;
+
+  retp(mest);
+endp ;
+
+
+proc (3) =  mono_is(xobs,yobs,xpred,hgrid,figure) ;
+  local myzero, denom, nobs, npred, numh, mest_i, cv, i, m_cv, j, obs_j,
+        kern, hcv, mest_is ;
+
+  myzero = 1e-16 ;
+  nobs = rows(xobs) ;
+  npred = rows(xpred) ;
+  numh = rows(hgrid) ;
+  xobs = sortc(xobs~yobs,1) ;
+  yobs = xobs[.,2] ;
+  xobs = xobs[.,1] ;
+  
+  if (numh>1) ;
+    @ ------------------- @
+    @ 1. Cross-Validation @
+    @ ------------------- @
+    cv = zeros(numh,1) ;
+    i=1 ;
+    do while i<=numh ;
+      m_cv = zeros(nobs,1) ;
+      j=1;
+      do while j<=nobs ;
+        obs_j = selif(xobs~yobs,seqa(1,1,nobs)./=j) ;
+        mest_i = iso_is(obs_j[.,1],obs_j[.,2]) ;
+        kern = pdfn((xobs[j]-obs_j[.,1])/hgrid[i]) ;
+        denom = maxc(sumc(kern) | myzero) ;        
+        m_cv[j] = sumc(kern.*mest_i)/denom ;
+        j=j+1;
+      endo;
+      cv[i] = meanc((m_cv-yobs).^2) ;
+      i=i+1;
+    endo;
+    hcv = hgrid[minindc(cv)] ;
+  else ;
+    hcv = hgrid ;
+    cv = 0 ;
+  endif ;
+
+  @ ---------------------- @
+  @ 2. Isotonic regression @
+  @ ---------------------- @
+  mest_i = iso_is(xobs,yobs) ;
+
+  @ ------------------- @
+  @ 3. Nadaraya-Watson  @
+  @ ------------------- @
+  mest_is = zeros(npred,1) ;
+  j=1;
+  do while j<=npred ;
+    kern = pdfn((xpred[j]-xobs)/hcv) ;
+    denom = maxc(sumc(kern) | myzero) ;        
+    mest_is[j] = sumc(kern.*mest_i)/denom ;
+    j=j+1;
+  endo;
+
+  if (figure==1)AND(numh>1) ;
+    @ ----------@
+    @ 4. Graphs @
+    @ ----------@
+    library pgraph ;
+    graphset ;
+    begwind;
+      window(2,1,0);
+      setwind(1);
+        title("CROSS-VALIDATION FOR 'h' (GAUSSIAN KERNEL)") ;
+        xlabel("Bandwidth 'h'") ;
+        ylabel("CV(h)") ;
+        xy(hgrid,cv) ;
+      nextwind;
+        title("Monotonize-Then-Smooth: IS") ;
+        xlabel("X") ;
+        ylabel("Y") ;
+        xy(xpred,mest_is) ;
+    endwind;
+  endif ;
+
+retp(mest_is,hcv,cv);
+
+endp;
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,44 @@
+/*
+** DCHOKERN -   Kernel Estimation of the conditional probability
+**              Prob(Y=1 | X) where Y is a binary variable 
+**              and X is a vector of variables
+**
+** by Victor Aguirregabiria
+** Version: February 1996
+** Last revision: February 2003
+**
+** Format:      pest = dchokern(yobs,xobs,xpred)
+**
+** Inputs:
+**      yobs    - (nobs x ky) matrix with observations of 
+**                the binary variables Y1 , Y2, ... Yky
+**
+**      xobs    - (nobs x kx) matrix with observations of X
+**
+**      xpred   - (q x kx) matrix of values of X for which
+**                Prob(Y=1|X) will be estimated
+**
+** Outputs:
+**      pest    - (q x ky) vector of estimates
+**
+*/
+
+proc (1) = dchokern(yobs,xobs,xpred) ;
+  local nobs, ky, npred, band0, pest, j, eps0 ;
+  nobs = rows(yobs) ;
+  ky = cols(yobs) ;
+  npred = rows(xpred) ;
+  band0 = (1.364 * stdc(xobs))/((pi*nobs)^(1/5)) ;  
+  band0 = band0' ;
+  pest = zeros(npred,ky) ;
+  j=1 ;
+  do while j<=npred ;
+    eps0 = (xobs - xpred[j,.])./band0 ;
+    eps0 = -0.5 * eps0.*eps0 ;
+    eps0 = sumc( eps0' ) ;
+    eps0 = exp(eps0) ;
+    pest[j,.] = (sumc(yobs.*eps0)./sumc(eps0))' ;
+    j=j+1 ;
+  endo ;
+  retp(pest) ;
+endp ;

@@ -1,0 +1,86 @@
+/*
+/   ISONPREG.SRC
+/
+/   This procedure implements a nonparametric isotonic 
+/   (monotonic) regression using the max-min estimator
+/   that was first proposed by Brunk (AS, 1958).
+/
+/   Remark 1: The procedure implements directly the 
+/   max-min formula, and it does NOT use the PAV 
+/   (Pool Adjacent Violator) algorithm.
+/
+/   Remark 2: The procedure estimates the regression
+/   function at the N values of X in the sample. And it
+/   interpolates and extrapolates to estimate the 
+/   regression function at out of sample points. 
+/
+/   Written by:  Victor Aguirregabiria and Gustavo Vicentini
+/                July, 2005
+/
+/   Format:  mest = isonpreg(xobs,yobs,xpred,figure)
+/
+** Input        xobs    - (N x 1) matrix of observations of the 
+**                        conditioning variable.
+**
+**              yobs    - (N x 1) vector of observations of the
+**                        dependent variable.
+**
+**              xpred   - (q x 1) vector of values of the conditioning
+**                        variable where the conditional expectation
+**                        will be estimated.
+**
+**              figure  - 0=No graphs; 1=Graphs
+**
+**  Output      mest    - (q x 1) vector of estimates
+**
+*/
+
+proc (1) =  isonpreg(xobs,yobs,xpred,figure) ;
+  local buff, nobs, npred, zstar, i, msample, mest, jstar, diff ;
+
+  buff = sortc(xobs~yobs,1) ;
+  xobs = buff[.,1] ;
+  yobs = buff[.,2] ;
+  nobs = rows(xobs) ;
+  npred = rows(xpred) ;
+  zstar = zeros(nobs,1) ;
+  i=1 ;
+  do while i<=nobs ;
+    zstar[i] = minc(cumsumc(yobs[i:nobs])./seqa(1,1,nobs-i+1)) ;
+    i=i+1 ;
+  endo ;
+
+  msample = zeros(nobs,1) ;
+  msample[1] = zstar[1] ;
+  i=2 ;
+  do while i<=nobs ;
+    msample[i] = maxc(msample[i-1] | zstar[i]) ;
+    i=i+1 ;
+  endo ;
+
+  mest = zeros(npred,1) ;
+  i=1 ;
+  do while i<=npred ;
+    jstar = minindc(abs(xobs-xpred[i])) ;
+    diff = xobs[jstar] -xpred[i] ;
+    if (diff==0) OR ((diff>0)AND(jstar==1)) OR ((diff<0)AND(jstar==nobs)) ;
+      mest[i] = msample[jstar] ;
+    elseif ((diff>0)AND(jstar>1)) ;
+      mest[i] = (msample[jstar]+msample[jstar-1])/2 ;
+    elseif ((diff<0)AND(jstar<nobs)) ;
+      mest[i] = (msample[jstar]+msample[jstar+1])/2 ;
+    endif ;
+    i=i+1 ;
+  endo ;
+
+  if (figure==1) ;
+    title("Monotonization of Y") ;
+    xlabel("X") ;
+    ylabel("Y") ;
+    xtics(minc(xpred),maxc(xpred),
+       (maxc(xpred)-minc(xpred))/10,(maxc(xpred)-minc(xpred))/10) ;
+    xy(xpred,mest) ;
+  endif ;
+
+  retp(mest);
+endp ;
