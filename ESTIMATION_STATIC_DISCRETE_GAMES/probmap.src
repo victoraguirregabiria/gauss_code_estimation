@@ -1,0 +1,115 @@
+/*
+**  PROBMAT.SRC     Procedure for the mapping from probabilities 
+**                  to probabilities in a model of entry with 
+**                  incomplete information
+**
+**  by Victor Aguirregabiria
+**  First version: May, 2001
+**  This  version: October, 2004
+**
+**  ---------------------------------------------------------------------
+**                              MODEL
+**  ---------------------------------------------------------------------
+**      Profits:
+**      --------
+**      No entry (ai = 0):  Ui(0,i) = 0
+**      Entry (ai = 1):     Ui(1,i) = pind_i - delta*ln(Sum(aj) + 1) + ei
+**
+**      where:
+**          pind_i = profitability index for firm i
+**          ai = Indicator of entry for firm i: belongs to {0,1}
+**          a_i = (nplayer x 1) vector with aj's for all firm except i
+**          nplayer = Number of potential entrants
+**          ei = Private information: It can be:
+**                   - iid extreme valued distributed
+**                   - or iid standard normal                      
+**
+**  ----------------------------------------------------------------------------
+**
+**  FORMAT:
+**  { prob1, probnum } = probmap(pind,deps,prob0) ;
+**
+**  Inputs:
+**
+**      pind    - (nplayer x 1) vector of profitability indexes.
+**
+**      deps    - Distribution of unobservables:
+**                      1 = Extreme value
+**                      2 = Standard normal
+**
+**      prob0   - (nplayer x 1) vector with initial guess of players' 
+**                probabilities of entry
+**
+**  Outputs:
+**
+**      prob1   - (nplayer x 1) vector with equilibrium probabilities
+**
+**      probnum - (nplayer x nplayer) matrix with the probabilities of
+**                the number of entrants excluding player i. 
+**                First column is for "n_i=0", second column for "n-i=1", ...
+**                the last column is for "n_i=nplayer-1"
+**
+*/
+
+proc (2) = probmap(x0,z0,theta,prob0) ;
+  local nplay, kx, kz, beta0, beta, g0, d0, probnum, prob1, 
+        numcom, i, p0_i, a_i, iter, nentry_i, flag, conta ;
+  nplay = rows(prob0) ;
+  kx = cols(x0) ;
+  kz = cols(z0) ;
+  beta0 = theta[1] ;
+  beta = theta[2:kx+1] ;
+  g0 = theta[kx+2:kx+kz+1] ;
+  d0 = theta[kx+kz+2] ;
+  prob1 = zeros(nplay,1) ;
+  numcom = 2^(nplay-1) ;
+  probnum = zeros(nplay,nplay) ;
+
+  if (nplay==2) ;
+    probnum = ((1-prob0[2]) ~ prob0[2])
+            | ((1-prob0[1]) ~ prob0[1]) ;
+  elseif (nplay>2) ;
+    i=1 ;
+    do while i<=nplay ;
+      if (i==1) ;
+        p0_i = prob0[2:nplay] ;
+      elseif (i>1)AND(i<nplay) ;
+        p0_i = prob0[1:i-1] | prob0[i+1:nplay] ;
+      elseif (i==nplay) ;
+        p0_i = prob0[1:nplay-1] ;
+      endif ;
+      a_i = zeros(nplay-1,1) ;
+      iter=1 ;
+      do while (iter<=numcom) ;
+        @ Acumulating prob for number of entrants @
+        nentry_i = sumc(a_i) ;
+        probnum[i,nentry_i+1] = probnum[i,nentry_i+1]
+                    + exp(sumc(a_i.*ln(p0_i)+(1-a_i).*ln(1-p0_i))) ;
+        @ Generating new a_i @
+        if (a_i[nplay-1]==0) ;
+          a_i = (a_i[1:nplay-2] | 1) ;
+        else ;
+          flag=0 ;
+          conta=nplay-2 ;
+          do while (flag==0)AND(conta>1) ;
+            if (a_i[conta]==0) ;
+              a_i = (a_i[1:1:conta-1] | 1 | zeros(nplay-1-conta,1)) ;
+              flag=1 ;
+            endif ;
+            conta=conta-1 ;
+          endo ;
+          if (conta==1)AND(flag==0) ;
+            a_i = (1 | zeros(nplay-1-conta,1)) ;
+          endif ;
+        endif ;
+        iter=iter+1 ;
+      endo ;
+      i=i+1 ;
+    endo ;
+  endif ;
+
+  prob1 = beta0 + x0*beta + z0*g0 
+        - d0 * (probnum * ln(1+seqa(0,1,nplay))) ;
+  prob1 = cdfn(prob1) ;
+  retp(prob1,probnum) ;
+endp ;
