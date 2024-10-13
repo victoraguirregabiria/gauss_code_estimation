@@ -2,6 +2,7 @@ ESTIMATION OF STATIC DISCRETE GAMES
 -----------------------------------
 
 nplgame.src
+
 Procedure that estimates the structural parameters of an entry model of incomplete information using a Nested Pseudo-Likelihood (NPL) algorithm.
 
 equiprob.src
